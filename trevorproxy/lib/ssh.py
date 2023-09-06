@@ -103,6 +103,9 @@ class SSHProxy:
 
         return self.running
 
+    def get_host(self):
+        return self.host
+
     def __hash__(self):
         return hash(str(self))
 
@@ -161,7 +164,7 @@ class IPTables:
                         "--mode",
                         "nth",
                         "--every",
-                        f"{len(self.proxies)-i}",
+                        f"{len(self.proxies)-i}",  # can't change this to start from low to high since that's how iptables evaluates the rules
                         "--packet",
                         "0",
                     ]
@@ -179,13 +182,27 @@ class IPTables:
             cmd = iptables_del + rule
             sudo_run(cmd)
 
+    def add_rule(self, proxy):
+        # not very optimized
+        self.stop()
+        self.proxies.append(proxy)
+        self.iptables_rules = []
+        self.start()
+
+    def remove_rule(self, proxy):
+        # not very optimized
+        self.stop()
+        self.proxies.remove(proxy)
+        self.iptables_rules = []
+        self.start()
+
 
 class SSHLoadBalancer:
     dependencies = ["ssh", "ss", "iptables", "sudo"]
 
     def __init__(
         self,
-        hosts,
+        hosts=None,
         key=None,
         key_pass=None,
         base_port=33482,
@@ -201,18 +218,19 @@ class SSHLoadBalancer:
         self.proxies = dict()
         self.socks_server = socks_server
 
-        for i, host in enumerate(hosts):
-            proxy_port = self.base_port + i
-            proxy = SSHProxy(host, proxy_port, key, key_pass, ssh_args=self.args)
-            self.proxies[str(proxy)] = proxy
+        if hosts:
+            for i, host in enumerate(hosts):
+                proxy_port = self.base_port + i
+                proxy = SSHProxy(host, proxy_port, key, key_pass, ssh_args=self.args)
+                self.proxies[str(proxy)] = proxy
 
-        if current_ip:
-            self.proxies["None"] = None
+            if current_ip:
+                self.proxies["None"] = None
 
-        self.proxy_round_robin = list(self.proxies.values())
-        self.round_robin_counter = 0
+            self.proxy_round_robin = list(self.proxies.values())
+            self.round_robin_counter = 0
 
-        self.iptables = IPTables(list(self.proxies.values()))
+            self.iptables = IPTables(list(self.proxies.values()))
 
     def start(self, timeout=30):
         [p.start(wait=False) for p in self.proxies.values() if p is not None]
@@ -235,6 +253,53 @@ class SSHLoadBalancer:
         [proxy.stop() for proxy in self.proxies.values() if proxy is not None]
         if self.socks_server:
             self.iptables.stop()
+                
+    def load_proxies_from_file(self, hosts):        
+        for i, host in enumerate(hosts):
+            proxy_port = self.base_port + i
+            proxy = SSHProxy(host, proxy_port, self.key, self.key_pass, ssh_args=self.args)
+            self.proxies[str(proxy)] = proxy
+
+        self.proxy_round_robin = list(self.proxies.values())
+        self.round_robin_counter = 0
+
+        self.iptables = IPTables(list(self.proxies.values()))
+        
+    
+    def add_proxy(self, host, timeout=3):
+        proxy_port = self.next_proxy_port()
+        proxy = SSHProxy(host, proxy_port, self.key, self.key_pass, ssh_args=self.args)
+
+        # Start added proxy - wait for 30s for connection
+        proxy.start(wait=False)
+        left = int(timeout)
+        while not proxy.is_connected():
+            left -= 1
+            if proxy is not None and (not proxy.sh.is_alive() or left <= 0):
+                raise SSHProxyError(f"Failed to start SSH proxy {p}: {p.command}")
+                return
+            sleep(1)
+
+        self.iptables.add_rule(proxy)
+        self.proxies[str(proxy)] = proxy
+        self.proxy_round_robin = list(self.proxies.values())
+
+    def remove_proxy(self, host):
+        proxy = [p for p in self.proxies.values() if p is not None and p.get_host() == host][0]
+        proxy.stop()
+        self.iptables.remove_rule(proxy)
+
+        self.proxies.pop(str(proxy))
+        self.proxy_round_robin = list(self.proxies.values())
+
+    def next_proxy_port(self):
+        # If there are already SSH proxies established then continue port numbering sequentially ELSE start from base port
+        if self.proxies:
+            proxy_port = int(list(self.proxies)[-1].split(":")[2]) + 1
+        else:
+            proxy_port = self.base_port
+        
+        return proxy_port
 
     def __next__(self):
         """

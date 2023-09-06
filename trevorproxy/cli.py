@@ -51,11 +51,11 @@ def main():
     )
 
     ssh = subparsers.add_parser("ssh", help="round-robin traffic through SSH hosts")
-    ssh.add_argument(
-        "ssh_hosts",
-        nargs="+",
-        help="Round-robin load-balance through these SSH hosts (user@host)",
-    )
+    #ssh.add_argument(
+    #    "ssh_hosts",
+    #    nargs="+",
+    #    help="Round-robin load-balance through these SSH hosts (user@host)",
+    #)
     ssh.add_argument(
         "-k", "--key", help="Use this SSH key when connecting to proxy hosts"
     )
@@ -65,6 +65,13 @@ def main():
         default=32482,
         type=int,
         help="Base listening port to use for SOCKS proxies (default: 32482)",
+    )
+    ssh.add_argument(
+        "--hosts-file",
+        "-f",
+        required=True,
+        help="File containing a list of ssh_hostst. This file will be monitored for \
+            additions and removals and traffic will be load-balanced accordinly (user@host)",
     )
 
     try:
@@ -85,12 +92,16 @@ def main():
             options.key_pass = util.get_ssh_key_passphrase(options.key)
 
             load_balancer = SSHLoadBalancer(
-                hosts=options.ssh_hosts,
+                #hosts=options.ssh_hosts,
                 key=options.key,
                 key_pass=options.key_pass,
                 base_port=options.base_port,
                 socks_server=True,
             )
+
+            f_hosts = open(options.hosts_file, "r")
+            hosts = f_hosts.read().splitlines()
+            load_balancer.load_proxies_from_file(hosts)
 
             try:
                 load_balancer.start()
@@ -100,6 +111,25 @@ def main():
 
                 # serve forever
                 while 1:
+                    try:
+                        f_hosts = open(options.hosts_file, "r")
+                        c_hosts = f_hosts.read().splitlines()
+                        a_hosts = [h for h in c_hosts if h not in hosts]  # every host that is defined in the file (c_hosts) but does not exist in the current list (hosts) should be added
+                        d_hosts = [h for h in hosts if h not in c_hosts]  # every host that is was previously defined (hosts) but is not present anymore in the file (c_hosts) should be removed
+
+                        # add newly added hosts to the load balancer
+                        if a_hosts:
+                            [load_balancer.add_proxy(add_host) for add_host in a_hosts]
+                            a_hosts = []
+                            hosts = c_hosts
+
+                        if d_hosts:
+                            [load_balancer.remove_proxy(remove_host) for remove_host in d_hosts]
+                            d_hosts = []
+                            hosts = c_hosts
+                    except:
+                        log.error("Cannot read SSH hosts file")
+                        
                     # rebuild proxy if it goes down
                     for proxy in load_balancer.proxies.values():
                         if not proxy.is_connected():
@@ -111,6 +141,7 @@ def main():
 
             finally:
                 load_balancer.stop()
+                f_hosts.close()
 
         elif options.proxytype == "subnet":
             # make sure executables exist
