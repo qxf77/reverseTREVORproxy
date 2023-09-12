@@ -12,11 +12,11 @@ log = logging.getLogger("trevorproxy.ssh")
 
 class SSHProxy:
     def __init__(self, host, proxy_port):
-        self.host = host
+        self.remote_host = host
         self.proxy_port = proxy_port
 
     def get_remote_host(self):
-        return self.host
+        return self.remote_host
 
     def get_local_proxy_port(self):
         return self.host
@@ -160,7 +160,7 @@ class SSHLoadBalancer:
         inactive = False
 
         for proxy in list(self.active_proxies):  # use list(proxies) in instead of proxies.values() to avoid runtime deletion error
-            if not check_if_proxy_is_established(self.active_proxies[proxy]):
+            if not self.check_if_proxy_is_established(self.active_proxies[proxy]):
                 inactive = True
                 self.remove_connection(self.active_proxies[proxy])
                 log.info(f"Removed reverse SOCKS on 127.0.0.1:{self.all_proxies[proxy].proxy_port} from {self.all_proxies[proxy].remote_host}")
@@ -216,7 +216,7 @@ class SSHLoadBalancer:
         '''
         Remove a single active connection, update iptables
         '''
-        cmd = ["ss", "-KHt4", "state", "established", "sport", "=", ":ssh", "and", "dst", "=", proxy.remote_host]
+        cmd = ["ss", "-KHt4", "state", "established", "sport", "=", ":ssh", "and", "dst", "=", self.active_proxies[str(proxy)].remote_host]
         sudo_run(cmd)
 
         del self.active_proxies[str(proxy)]
@@ -230,7 +230,7 @@ class SSHLoadBalancer:
         '''
         for proxy in list(self.active_proxies):
             del self.active_proxies[str(proxy)]
-            cmd = ["ss", "-KHt4", "state", "established", "sport", "=", ":ssh", "and", "dst", "=", proxy.remote_host]
+            cmd = ["ss", "-KHt4", "state", "established", "sport", "=", ":ssh", "and", "dst", "=", self.active_proxies[str(proxy)].remote_host]
             sudo_run(cmd)
 
     def start(self):
