@@ -148,7 +148,7 @@ class SSHLoadBalancer:
         for proxy in new_proxies:
             if check_if_proxy_is_established(self.all_proxies[proxy]):
                 new = True
-                add_connection_active(self.all_proxies[proxy])
+                self.new_conn_active(self.all_proxies[proxy])
                 log.info(f"New reverse SOCKS on 127.0.0.1:{proxy.get_local_proxy_port} from {proxy.get_remote_host()}")
         
         return new
@@ -162,7 +162,7 @@ class SSHLoadBalancer:
         for proxy in list(self.active_proxies):  # use list(proxies) in instead of proxies.values() to avoid runtime deletion error
             if not check_if_proxy_is_established(self.active_proxies[proxy]):
                 inactive = True
-                remove_connection(self.active_proxies[proxy])
+                self.remove_connection(self.active_proxies[proxy])
                 log.info(f"Removed reverse SOCKS on 127.0.0.1:{proxy.get_local_proxy_port} from {proxy.get_remote_host()}")
         
         return inactive
@@ -187,10 +187,13 @@ class SSHLoadBalancer:
         RETURN next available port that can be used for a reverse SOCKS connection
         ADD the SSH proxy to the temporary list
         '''
+        port = None
+        all_reserved_proxy_ports = [p.proxy_port for p in self.all_proxies.values()]
         for port in range(self.base_port, self.base_port + 5000):  # NOTE: up to 5000 simultaneous reverse socks connections can be made and used?
-            if not is_port_in_use(port):
+            if not is_port_in_use(port) and port not in all_reserved_proxy_ports:
                 break
 
+        log.info(f"Port {port} was made available to {remote_host}")
         self.new_conn_inactive(SSHProxy(remote_host, port))
         return port
 
