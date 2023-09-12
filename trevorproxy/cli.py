@@ -35,9 +35,9 @@ def main():
     
     ssh.add_argument(
         "--base-port",
-        default=32482,
+        default=31332,
         type=int,
-        help="Base listening port to use for SOCKS proxies (default: 32482)",
+        help="Base listening port to use for SOCKS proxies (default: 31332)",
     )
 
     try:
@@ -62,7 +62,7 @@ def main():
                 # start the load balancer and a HTTP API server which serves the next available port 
                 # that can be used for a reverse SOCK connection
                 load_balancer.start()
-                start_api(context=load_balancer)
+                start_api(port=31331, context=load_balancer)
 
                 # serve forever
                 while 1:
@@ -74,7 +74,7 @@ def main():
 
                     # Check if all proxies are still up
                     inactive = load_balancer.health_check_connections()
-                    
+
                     log.info("Sleeping for 3s - 2")
                     time.sleep(3)
 
