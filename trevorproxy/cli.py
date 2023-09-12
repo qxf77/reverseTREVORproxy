@@ -26,7 +26,13 @@ def main():
         "-v", "--verbose", action="store_true", help="Be verbose"
     )
     parser.add_argument(
-        "--base-port",
+        "--api",
+        default=31331,
+        type=int,
+        help="Port that will be used by the API server (default: 31331)",
+    )
+    parser.add_argument(
+        "--base",
         default=31332,
         type=int,
         help="Base listening port to use for SOCKS proxies (default: 31332)",
@@ -51,7 +57,7 @@ def main():
             # start the load balancer and a HTTP API server which serves the next available port 
             # that can be used for a reverse SOCK connection
             load_balancer.start()
-            start_api(port=31331, context=load_balancer)
+            start_api(port=options.api, context=load_balancer)
 
             # serve forever
             while 1:
