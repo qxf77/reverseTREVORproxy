@@ -43,7 +43,7 @@ def main():
     try:
         options = parser.parse_args()
 
-        if not options.quiet:
+        if options.verbose:
             logging.getLogger("trevorproxy").setLevel(logging.DEBUG)
 
         if options.proxytype == "ssh":
@@ -66,7 +66,7 @@ def main():
 
                 # serve forever
                 while 1:
-                    print("[INFO] Monitoring...")
+                    print("[INFO] Monitoring...", end="\r")
                     # Check if new proxies have been added
                     new = load_balancer.monitor_new_proxies()
                     time.sleep(3)
