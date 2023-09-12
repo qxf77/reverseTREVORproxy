@@ -2,7 +2,7 @@
 name = "trevorproxy"
 version = "1.0.6"
 description = "Rotate your source IP address via SSH proxies and other methods"
-authors = ["qxf77, ""TheTechromancer"]
+authors = ["qxf77", "TheTechromancer"]
 license = "GPL-3.0"
 repository = "https://github.com/qxf77/reverseTREVORproxy"
 homepage = "https://github.com/qxf77/reverseTREVORproxy"

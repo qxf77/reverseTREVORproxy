@@ -271,44 +271,6 @@ class SSHLoadBalancer:
         if self.socks_server:
             self.iptables.stop()
 
-    
-""" def load_proxies_from_file(self, hosts):        
-        for i, host in enumerate(hosts):
-            #proxy_port = self.base_port + i
-            proxy = SSHProxy(host, proxy_port)
-            self.active_proxies[str(proxy)] = proxy
-
-        self.proxy_round_robin = list(self.active_proxies.values())
-        self.round_robin_counter = 0
-
-        self.iptables = IPTables(list(self.active_proxies.values()))
-    
-    def add_proxy(self, host, timeout=3):
-        proxy_port = self.next_proxy_port()
-        proxy = SSHProxy(host, proxy_port, self.key, self.key_pass, ssh_args=self.args)
-
-        # Start added proxy - wait for 30s for connection
-        proxy.start(wait=False)
-        left = int(timeout)
-        while not proxy.is_connected():
-            left -= 1
-            if proxy is not None and (not proxy.sh.is_alive() or left <= 0):
-                raise SSHProxyError(f"Failed to start SSH proxy {p}: {p.command}")
-                return
-            sleep(1)
-
-        self.iptables.add_rule(proxy)
-        self.active_proxies[str(proxy)] = proxy
-        self.proxy_round_robin = list(self.active_proxies.values())
-
-    def remove_proxy(self, host):
-        proxy = [p for p in self.active_proxies.values() if p is not None and p.get_remote_host() == host][0]
-        proxy.stop()
-        self.iptables.remove_rule(proxy)
-
-        self.active_proxies.pop(str(proxy))
-        self.proxy_round_robin = list(self.active_proxies.values()) """
-
     def __next__(self):
         """
         Yields proxies in round-robin fashion forever

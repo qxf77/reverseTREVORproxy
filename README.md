@@ -7,7 +7,7 @@ By [@thetechr0mancer](https://twitter.com/thetechr0mancer)
 
 ## Installation
 ~~~bash
-pip install git+https://github.com/qxf77/TREVORproxy
+pip install git+https://github.com/qxf77/reverseTREVORproxy
 ~~~
 
 See the accompanying [**Blog Post**](https://github.com/blacklanternsecurity/TREVORspray/blob/trevorspray-v2/blogpost.md) for a fun rant and some cool demos!
