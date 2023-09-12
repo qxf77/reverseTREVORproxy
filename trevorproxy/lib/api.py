@@ -1,3 +1,4 @@
+import _thread as thread
 import logging
 from http.server import BaseHTTPRequestHandler, HTTPServer
 #import SocketServer - TODO remove if unnecessary
@@ -42,9 +43,4 @@ def start_api(address="0.0.0.0", port=8080, context=None):
     httpd.add_context(context)
         
     log.debug(f"[*] Starting API on {address}:{port}")
-    httpd.serve_forever()
-
-""" def run(server_class=HTTPServer, handler_class=BaseHTTPRequestHandler):
-    server_address = ('', 8000)
-    httpd = server_class(server_address, handler_class)
-    httpd.serve_forever() """
+    thread.start_new_thread(httpd.serve_forever,())

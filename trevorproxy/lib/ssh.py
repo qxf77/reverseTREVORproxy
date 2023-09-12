@@ -146,7 +146,7 @@ class SSHLoadBalancer:
 
         new_proxies = set(self.all_proxies) - set(self.active_proxies)
         for proxy in new_proxies:
-            if check_if_proxy_is_established(self.all_proxies[proxy]):
+            if self.check_if_proxy_is_established(self.all_proxies[proxy]):
                 new = True
                 self.new_conn_active(self.all_proxies[proxy])
                 log.info(f"New reverse SOCKS on 127.0.0.1:{proxy.get_local_proxy_port} from {proxy.get_remote_host()}")
@@ -171,7 +171,7 @@ class SSHLoadBalancer:
         '''
         See if the PROXY actually has an established ssh reverse SOCKS
         '''
-        port = proxy.get_local_proxy_port()
+        port = proxy.proxy_port
 
         cmd = ["ss", "-Hlt4", "state", "all", "sport", "=", f":{port}"]
         ret = sudo_run(cmd, capture_output=True)

@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-# by TheTechromancer
-
 import sys
 import time
 import logging
@@ -71,8 +69,14 @@ def main():
                     # Check if new proxies have been added
                     new = load_balancer.monitor_new_proxies()
 
+                    log.info("Sleeping for 3s - 1")
+                    time.sleep(3)
+
                     # Check if all proxies are still up
                     inactive = load_balancer.health_check_connections()
+                    
+                    log.info("Sleeping for 3s - 2")
+                    time.sleep(3)
 
             finally:
                 load_balancer.stop()
