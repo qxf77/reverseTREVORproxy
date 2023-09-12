@@ -4,7 +4,7 @@ from time import sleep
 import subprocess as sp
 from pathlib import Path
 
-from BaseHTTPServer import HTTPServer
+from http.server import HTTPServer
 from .util import BasicAPI
 
 from .util import sudo_run, is_port_in_use
@@ -143,10 +143,10 @@ class SSHLoadBalancer:
         '''
         Start a HTTP server acting as a basic API 
         '''
-        server_address = (address, port)
+        server_address = (adrress, port)
         httpd = HTTPServer(server_address, BasicAPI(ssh))
             
-        log.debug("[*] Starting API on {address}:{port}")
+        log.debug(f"[*] Starting API on {address}:{port}")
         httpd.serve_forever()
 
     def monitor_new_proxies(self):
@@ -266,7 +266,7 @@ class SSHLoadBalancer:
         '''
         Kill all connections
         '''
-        remove_all_connections()
+        self.remove_all_connections()
         
         if self.socks_server:
             self.iptables.stop()

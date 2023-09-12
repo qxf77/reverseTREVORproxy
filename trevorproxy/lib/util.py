@@ -9,7 +9,7 @@ from pathlib import Path
 from getpass import getpass
 from contextlib import suppress
 
-from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
 #import SocketServer - TODO remove if unnecessary
 
 log = logging.getLogger("trevorproxy.util")
