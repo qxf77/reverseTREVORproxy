@@ -42,5 +42,5 @@ def start_api(address="0.0.0.0", port=8080, context=None):
     httpd = BasicAPIServer(server_address, BasicAPIHandler)
     httpd.add_context(context)
         
-    log.debug(f"[*] Starting API on {address}:{port}")
+    log.info(f"Starting API on {address}:{port}")
     thread.start_new_thread(httpd.serve_forever,())
