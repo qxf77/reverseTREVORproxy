@@ -139,12 +139,17 @@ class SSHLoadBalancer:
         self.proxy_round_robin = list(self.active_proxies.values())
         self.round_robin_counter = 0
 
-    def start_api(self, adrress="0.0.0.0", port=8080):
+    def handler(*args):
+        # https://python-list.python.narkive.com/9Q8NM4nH/passing-context-into-basehttprequesthandler
+        BasicAPIHandler(self, *args)
+
+    def start_api(self, address="0.0.0.0", port=8080):
         '''
         Start a HTTP server acting as a basic API 
         '''
-        server_address = (adrress, port)
-        httpd = HTTPServer(server_address, BasicAPI(ssh))
+        server_address = (address, port)
+        httpd = HTTPServer(server_address, handler)
+        httpd.ad
             
         log.debug(f"[*] Starting API on {address}:{port}")
         httpd.serve_forever()

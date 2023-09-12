@@ -14,10 +14,10 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 log = logging.getLogger("trevorproxy.util")
 
-class BasicAPI(BaseHTTPRequestHandler):
-    def __init__(self, load_balancer):
-        super().__init__()
-        self.ssh = load_balancer
+class BasicAPIHandler(BaseHTTPRequestHandler):
+    def __init__(self, load_balancer, *args):
+        self.context = load_balancer
+        super().__init__(self, *args)
 
     def _set_headers(self):
         self.send_response(200)
@@ -26,7 +26,7 @@ class BasicAPI(BaseHTTPRequestHandler):
         
     # GET sends back next available port
     def do_GET(self):
-        next_port = self.ssh.next_available_proxy_port(self.address_string())
+        next_port = self.context.next_available_proxy_port(self.address_string())
         self._set_headers()
         self.wfile.write(next_port)
 
