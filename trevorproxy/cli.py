@@ -22,20 +22,7 @@ log = logging.getLogger("trevorproxy.cli")
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Round-robin requests through multiple SSH tunnels via a single SOCKS server"
-    )
-    parser.add_argument(
-        "-p",
-        "--port",
-        type=int,
-        default=1080,
-        help="Port for SOCKS server to listen on (default: 1080)",
-    )
-    parser.add_argument(
-        "-l",
-        "--listen-address",
-        default="127.0.0.1",
-        help="Listen address for SOCKS server (default: 127.0.0.1)",
+        description="Round-robin requests through multiple REVERSE SSH tunnels via a single SOCKS server"
     )
     parser.add_argument("-q", "--quiet", action="store_true", help="Be quiet")
     parser.add_argument(
@@ -44,35 +31,25 @@ def main():
 
     subparsers = parser.add_subparsers(dest="proxytype", help="proxy type")
 
-    subnet = subparsers.add_parser("subnet", help="round-robin traffic from subnet")
-    subnet.add_argument("-i", "--interface", help="Interface to send packets on")
-    subnet.add_argument(
-        "-s", "--subnet", required=True, help="Subnet to send packets from"
-    )
-
     ssh = subparsers.add_parser("ssh", help="round-robin traffic through SSH hosts")
+    
     #ssh.add_argument(
-    #    "ssh_hosts",
-    #    nargs="+",
-    #    help="Round-robin load-balance through these SSH hosts (user@host)",
+    #    "-k", "--key", help="Use this SSH key when connecting to proxy hosts"
     #)
-    ssh.add_argument(
-        "-k", "--key", help="Use this SSH key when connecting to proxy hosts"
-    )
-    ssh.add_argument("-kp", "--key-pass", action="store_true", help=argparse.SUPPRESS)
+    #ssh.add_argument("-kp", "--key-pass", action="store_true", help=argparse.SUPPRESS)
     ssh.add_argument(
         "--base-port",
         default=32482,
         type=int,
         help="Base listening port to use for SOCKS proxies (default: 32482)",
     )
-    ssh.add_argument(
-        "--hosts-file",
-        "-f",
-        required=True,
-        help="File containing a list of ssh_hostst. This file will be monitored for \
-            additions and removals and traffic will be load-balanced accordinly (user@host)",
-    )
+    #ssh.add_argument(
+    #    "--active-connections-file",
+    #    "-f",
+    #    required=True,
+    #    help="File containing a list of current active connections. This file will be monitored for \
+    #        additions and removals and traffic will be load-balanced accordinly (user@host)",
+    #)
 
     try:
         options = parser.parse_args()
@@ -89,46 +66,67 @@ def main():
                     log.error(f"Please install {binary}")
                     sys.exit(1)
 
-            options.key_pass = util.get_ssh_key_passphrase(options.key)
+            # init 
+            load_balancer = SSHLoadBalancer(base_port=options.base_port)
 
-            load_balancer = SSHLoadBalancer(
-                #hosts=options.ssh_hosts,
-                key=options.key,
-                key_pass=options.key_pass,
-                base_port=options.base_port,
-                socks_server=True,
-            )
+            # Check if active connection are still alive
+            #load_balancer.health_check_connections()
+            
 
-            f_hosts = open(options.hosts_file, "r")
-            hosts = f_hosts.read().splitlines()
-            load_balancer.load_proxies_from_file(hosts)
+            #f_hosts = open(options.hosts_file, "r")
+            #hosts = f_hosts.read().splitlines()
+            #load_balancer.load_proxies_from_file(hosts)
 
             try:
+                # start the load balancer and a HTTP API server which serves the next available port 
+                # that can be used for a reverse SOCK connection
                 load_balancer.start()
-                log.info(
-                    f"Listening on socks5://{options.listen_address}:{options.port}"
-                )
+                load_balancer.start_api()
 
                 # serve forever
                 while 1:
+                    # Check if new proxies have been added
+                    new = load_balancer.monitor_new_proxies()
+
+                    # Check if all proxies are still up
+                    inactive = load_balancer.health_check_connections()
+
+                    # If there are changes to the proxy list then restart the load balancer to use the new connections
+                    '''if new or inactive:
+                        if new and inactive:
+                            msg = "new proxies have been added and inactive proxies have been removed"
+                        elif new:
+                            msg = "new proxies have been added"
+                        else:
+                            msg = "inactive proxies have been removed"
+                        
+                        log.info(f"Restarting load balancer - {msg}")
+                        load_balancer.restart()'''
+
+                    #load_balancer.start()
+                    #log.info(
+                    #    f"Listening on socks5://{options.listen_address}:{options.port}"
+                    #)
+                    """                 
                     try:
                         f_hosts = open(options.hosts_file, "r")
-                        c_hosts = f_hosts.read().splitlines()
-                        a_hosts = [h for h in c_hosts if h not in hosts]  # every host that is defined in the file (c_hosts) but does not exist in the current list (hosts) should be added
-                        d_hosts = [h for h in hosts if h not in c_hosts]  # every host that is was previously defined (hosts) but is not present anymore in the file (c_hosts) should be removed
+                        m_hosts = f_hosts.read().splitlines()
+                        a_hosts = [h for h in m_hosts if h not in hosts]  # every host that is defined in the file (m_hosts) but does not exist in the current list (hosts) should be added
+                        d_hosts = [h for h in hosts if h not in m_hosts]  # every host that is was previously defined (hosts) but is not present anymore in the file (m_hosts) should be removed
 
                         # add newly added hosts to the load balancer
                         if a_hosts:
                             [load_balancer.add_proxy(add_host) for add_host in a_hosts]
                             a_hosts = []
-                            hosts = c_hosts
+                            hosts = m_hosts
 
                         if d_hosts:
                             [load_balancer.remove_proxy(remove_host) for remove_host in d_hosts]
                             d_hosts = []
-                            hosts = c_hosts
+                            hosts = m_hosts
                     except:
-                        log.error("Cannot read SSH hosts file")
+                        log.error("Cannot read SSH hosts file") 
+                    
                         
                     # rebuild proxy if it goes down
                     for proxy in load_balancer.proxies.values():
@@ -138,55 +136,11 @@ def main():
                             )
                             proxy.start()
                     time.sleep(1)
+                    """
 
             finally:
                 load_balancer.stop()
-                f_hosts.close()
 
-        elif options.proxytype == "subnet":
-            # make sure executables exist
-            for binary in ["iptables"]:
-                if not which(binary):
-                    log.error(f"Please install {binary}")
-                    sys.exit(1)
-
-            from lib.subnet import SubnetProxy
-            from lib.socks import ThreadingTCPServer, SocksProxy
-
-            subnet_proxy = SubnetProxy(
-                interface=options.interface, subnet=options.subnet
-            )
-            try:
-                subnet_proxy.start()
-                with ThreadingTCPServer(
-                    (options.listen_address, options.port),
-                    SocksProxy,
-                    proxy=subnet_proxy,
-                ) as server:
-                    log.info(
-                        f"Listening on socks5://{options.listen_address}:{options.port}"
-                    )
-                    server.serve_forever()
-            finally:
-                subnet_proxy.stop()
-
-        """
-        from ipaddress import ip_network, ip_address
-        blacklist = [ip_address('192.168.0.1'), ip_address('192.168.0.250'), ip_address('192.168.0.133')]
-        print(blacklist)
-        networks = util.excludes_hosts(ip_network('192.168.0.0/24'), blacklist)
-        print(networks)
-        for b in blacklist:
-            print(any([b in n for n in networks]))
-        """
-        # print(util.autodetect_address_pool(version=4))
-
-        """
-        from lib.cyclic import ipgen
-        a = ipgen(sys.argv[1])
-        for i in range(10):
-            print(next(a))
-        """
 
     except argparse.ArgumentError as e:
         log.error(e)

@@ -4,106 +4,24 @@ from time import sleep
 import subprocess as sp
 from pathlib import Path
 
-from .util import sudo_run
-from .errors import SSHProxyError
+from BaseHTTPServer import HTTPServer
+from .util import BasicAPI
+
+from .util import sudo_run, is_port_in_use
+#from .errors import SSHProxyError
 
 log = logging.getLogger("trevorproxy.ssh")
 
 
 class SSHProxy:
-    def __init__(self, host, proxy_port, key=None, key_pass="", ssh_args={}):
+    def __init__(self, host, proxy_port):
         self.host = host
         self.proxy_port = proxy_port
-        self.key = key
-        self.key_pass = key_pass
-        self.ssh_args = dict(ssh_args)
-        # Enable SSH socks proxy
-        self.ssh_args["D"] = str(proxy_port)
-        # Disable the "Are you sure you want to continue connecting" prompt
-        self.ssh_args["o"] = "StrictHostKeychecking=no"
-        if key:
-            self.ssh_args["i"] = str(Path(key).absolute())
-        self.sh = None
-        self.command = ""
-        self._ssh_stdout = ""
-        self.running = False
 
-    def start(self, wait=True, timeout=30):
-        self.stop()
+    def get_remote_host(self):
+        return self.host
 
-        if not self.is_connected():
-            log.info(f"Opening SSH connection to {self.host}")
-            self._ssh_stdout = ""
-            self._password_entered = False
-            self.sh = sh.ssh(
-                self.host,
-                _out=self._enter_password,
-                _out_bufsize=0,
-                _tty_in=True,
-                _unify_ttys=True,
-                _long_sep=" ",
-                _bg=True,
-                _bg_exc=False,
-                **self.ssh_args,
-            )
-            self.command = b" ".join(self.sh.cmd).decode()
-            log.debug(self.command)
-        else:
-            log.debug(
-                f"{self.__class__.__name__}.start() called but SSH connection is already established"
-            )
-
-        left = int(timeout)
-        if wait:
-            while not self.is_connected():
-                left -= 1
-                if left <= 0 or not self.sh.is_alive():
-                    raise SSHProxyError(
-                        f"Failed to start SSHProxy {self}. If using an SSH key, please verify its permissions. If it still fails, SSHing manually may reveal the problem."
-                    )
-                else:
-                    sleep(1)
-
-    def stop(self):
-        try:
-            self.sh.process.terminate()
-        except:
-            try:
-                self.sh.process.kill()
-            except:
-                pass
-
-    def _smart_decode(self, data):
-        if isinstance(data, bytes):
-            return data.decode("utf-8", errors="ignore")
-        else:
-            return str(data)
-
-    def _enter_password(self, char, stdin):
-        if self._password_entered or not char:
-            # save on CPU
-            sleep(0.01)
-        else:
-            char = self._smart_decode(char)
-            self._ssh_stdout += char
-            if "pass" in self._ssh_stdout and self._ssh_stdout.endswith(": "):
-                stdin.put(f"{self.key_pass}\n")
-
-    def is_connected(self):
-        if self.sh is None:
-            return False
-
-        netstat = sp.run(["ss", "-ntlp"], stderr=sp.DEVNULL, stdout=sp.PIPE)
-        if not f" 127.0.0.1:{self.proxy_port} " in netstat.stdout.decode():
-            log.debug(f'Waiting for {" ".join([x.decode() for x in self.sh.cmd])}')
-            self.running = False
-        else:
-            self.running = True
-            self._password_entered = True
-
-        return self.running
-
-    def get_host(self):
+    def get_local_proxy_port(self):
         return self.host
 
     def __hash__(self):
@@ -196,6 +114,9 @@ class IPTables:
         self.iptables_rules = []
         self.start()
 
+    def update_proxies(self, proxies):
+        self.proxies = proxies
+
 
 class SSHLoadBalancer:
     dependencies = ["ssh", "ss", "iptables", "sudo"]
@@ -203,68 +124,164 @@ class SSHLoadBalancer:
     def __init__(
         self,
         hosts=None,
-        key=None,
-        key_pass=None,
         base_port=33482,
-        current_ip=False,
-        socks_server=False,
+        current_ip=False,               # not used
+        socks_server=True,
     ):
-        self.args = dict()
         self.hosts = hosts
-        self.key = key
-        self.key_pass = key_pass
+        self.active_proxies = dict()    # all current active proxies 
+        self.all_proxies = dict()       # all proxies, even ones that don't have an active connection yet
+        
         self.base_port = base_port
-        self.current_ip = current_ip
-        self.proxies = dict()
         self.socks_server = socks_server
 
-        if hosts:
-            for i, host in enumerate(hosts):
-                proxy_port = self.base_port + i
-                proxy = SSHProxy(host, proxy_port, key, key_pass, ssh_args=self.args)
-                self.proxies[str(proxy)] = proxy
+        self.iptables = IPTables(list(self.active_proxies.values()))
+        self.proxy_round_robin = list(self.active_proxies.values())
+        self.round_robin_counter = 0
 
-            if current_ip:
-                self.proxies["None"] = None
+    def start_api(self, adrress="0.0.0.0", port=8080):
+        '''
+        Start a HTTP server acting as a basic API 
+        '''
+        server_address = (address, port)
+        httpd = HTTPServer(server_address, BasicAPI(ssh))
+            
+        log.debug("[*] Starting API on {address}:{port}")
+        httpd.serve_forever()
 
-            self.proxy_round_robin = list(self.proxies.values())
-            self.round_robin_counter = 0
+    def monitor_new_proxies(self):
+        '''
+        Monitor for incoming proxies - if a new entry is added to all_proxies then this entry is verified if it can be moved to active_proxies
+        '''
+        new = False
+        if self.all_proxies == self.active_proxies:
+            return new
 
-            self.iptables = IPTables(list(self.proxies.values()))
+        new_proxies = set(self.all_proxies) - set(self.active_proxies)
+        for proxy in new_proxies:
+            if check_if_proxy_is_established(self.all_proxies[proxy]):
+                new = True
+                add_connection_active(self.all_proxies[proxy])
+                log.info(f"New reverse SOCKS on 127.0.0.1:{proxy.get_local_proxy_port} from {proxy.get_remote_host()}")
+        
+        return new
+    
+    def health_check_connections(self):
+        '''
+        Check if the active connections are still established
+        '''
+        inactive = False
 
-    def start(self, timeout=30):
-        [p.start(wait=False) for p in self.proxies.values() if p is not None]
+        for proxy in list(self.active_proxies):  # use list(proxies) in instead of proxies.values() to avoid runtime deletion error
+            if not check_if_proxy_is_established(self.active_proxies[proxy]):
+                inactive = True
+                remove_connection(self.active_proxies[proxy])
+                log.info(f"Removed reverse SOCKS on 127.0.0.1:{proxy.get_local_proxy_port} from {proxy.get_remote_host()}")
+        
+        return inactive
 
-        # wait for them all to start
-        left = int(timeout)
-        while not all(
-            [p.is_connected() for p in self.proxies.values() if p is not None]
-        ):
-            left -= 1
-            for p in self.proxies.values():
-                if p is not None and (not p.sh.is_alive() or left <= 0):
-                    raise SSHProxyError(f"Failed to start SSH proxy {p}: {p.command}")
-            sleep(1)
+    def check_if_proxy_is_established(self, proxy):
+        '''
+        See if the PROXY actually has an established ssh reverse SOCKS
+        '''
+        port = proxy.get_local_proxy_port()
 
+        cmd = ["ss", "-Hlt4", "state", "all", "sport", "=", f":{port}"]
+        ret = sudo_run(cmd, capture_output=True)
+
+        if ret.stdout:
+            return True
+        else:
+            return False
+
+    # TODO implement lease time - if a connection is not created within x seconds after releasing a port then the port should be available in the pool
+    def next_available_proxy_port(self, remote_host):
+        '''
+        RETURN next available port that can be used for a reverse SOCKS connection
+        ADD the SSH proxy to the temporary list
+        '''
+        for port in range(self.base_port, self.base_port + 5000):  # NOTE: up to 5000 simultaneous reverse socks connections can be made and used?
+            if not is_port_in_use(port):
+                break
+
+        new_conn_inactive(SSHProxy(remote_host, port))
+        return port
+
+    def new_conn_inactive(self, proxy):
+        '''
+        Save a potential new active connection
+        '''
+        self.all_proxies[str(proxy)] = proxy
+    
+    def new_conn_active(self, proxy):
+        '''
+        Add a new active connection, update iptables
+        '''
+        self.active_proxies[str(proxy)] = proxy
+        self.iptables.add_rule(proxy)
+        self.proxy_round_robin = list(self.active_proxies.values())
+
+
+    def remove_connection(self, proxy):
+        '''
+        Remove a single active connection, update iptables
+        '''
+        cmd = ["ss", "-KHt4", "state", "established", "sport", "=", ":ssh", "and", "dst", "=", proxy.get_remote_host()]
+        sudo_run(cmd)
+
+        del self.active_proxies[str(proxy)]
+        self.iptables.remove_rule(proxy)
+        self.proxy_round_robin = list(self.active_proxies.values())
+
+
+    def remove_all_connections(self):
+        '''
+        Remove all active connections, don't update iptables after every delete
+        '''
+        for proxy in self.active_proxies.values():
+            del self.active_proxies[str(proxy)]
+            cmd = ["ss", "-KHt4", "state", "established", "sport", "=", ":ssh", "and", "dst", "=", proxy.get_remote_host()]
+            sudo_run(cmd)
+
+    def start(self):
+        '''
+        Start the load balancer
+        '''
         if self.socks_server:
             self.iptables.start()
 
-    def stop(self):
-        [proxy.stop() for proxy in self.proxies.values() if proxy is not None]
+    def restart(self):
+        '''
+        Restart the load balancer to update rules
+        '''
         if self.socks_server:
             self.iptables.stop()
-                
-    def load_proxies_from_file(self, hosts):        
-        for i, host in enumerate(hosts):
-            proxy_port = self.base_port + i
-            proxy = SSHProxy(host, proxy_port, self.key, self.key_pass, ssh_args=self.args)
-            self.proxies[str(proxy)] = proxy
+            self.iptables.update_proxies(list(self.active_proxies.values()))
+            self.iptables.start()
 
-        self.proxy_round_robin = list(self.proxies.values())
+            self.proxy_round_robin = list(self.active_proxies.values())
+            self.round_robin_counter = 0
+
+    def stop(self):
+        '''
+        Kill all connections
+        '''
+        remove_all_connections()
+        
+        if self.socks_server:
+            self.iptables.stop()
+
+    
+""" def load_proxies_from_file(self, hosts):        
+        for i, host in enumerate(hosts):
+            #proxy_port = self.base_port + i
+            proxy = SSHProxy(host, proxy_port)
+            self.active_proxies[str(proxy)] = proxy
+
+        self.proxy_round_robin = list(self.active_proxies.values())
         self.round_robin_counter = 0
 
-        self.iptables = IPTables(list(self.proxies.values()))
-        
+        self.iptables = IPTables(list(self.active_proxies.values()))
     
     def add_proxy(self, host, timeout=3):
         proxy_port = self.next_proxy_port()
@@ -281,25 +298,16 @@ class SSHLoadBalancer:
             sleep(1)
 
         self.iptables.add_rule(proxy)
-        self.proxies[str(proxy)] = proxy
-        self.proxy_round_robin = list(self.proxies.values())
+        self.active_proxies[str(proxy)] = proxy
+        self.proxy_round_robin = list(self.active_proxies.values())
 
     def remove_proxy(self, host):
-        proxy = [p for p in self.proxies.values() if p is not None and p.get_host() == host][0]
+        proxy = [p for p in self.active_proxies.values() if p is not None and p.get_remote_host() == host][0]
         proxy.stop()
         self.iptables.remove_rule(proxy)
 
-        self.proxies.pop(str(proxy))
-        self.proxy_round_robin = list(self.proxies.values())
-
-    def next_proxy_port(self):
-        # If there are already SSH proxies established then continue port numbering sequentially ELSE start from base port
-        if self.proxies:
-            proxy_port = int(list(self.proxies)[-1].split(":")[2]) + 1
-        else:
-            proxy_port = self.base_port
-        
-        return proxy_port
+        self.active_proxies.pop(str(proxy))
+        self.proxy_round_robin = list(self.active_proxies.values()) """
 
     def __next__(self):
         """
@@ -307,7 +315,7 @@ class SSHLoadBalancer:
         Note that a proxy can be "None" if current_ip is specified
         """
 
-        proxy_num = self.round_robin_counter % len(self.proxies)
+        proxy_num = self.round_robin_counter % len(self.active_proxies)
         proxy = self.proxy_round_robin[proxy_num]
         self.round_robin_counter += 1
         return proxy

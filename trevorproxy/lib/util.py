@@ -1,3 +1,5 @@
+import requests
+import socket
 import os
 import json
 import logging
@@ -7,174 +9,44 @@ from pathlib import Path
 from getpass import getpass
 from contextlib import suppress
 
+from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+#import SocketServer - TODO remove if unnecessary
+
 log = logging.getLogger("trevorproxy.util")
 
+class BasicAPI(BaseHTTPRequestHandler):
+    def __init__(self, load_balancer):
+        super().__init__()
+        self.ssh = load_balancer
 
-def clean_pool_arg(arg):
-    arg = str(arg)
-    if "-" in arg:
-        ip1, ip2 = [s.strip() for s in arg.split("-", 1)]
-        subnets = range_to_cidrs(ip1, ip2)
-    else:
-        subnets = [ip_network(arg)]
-    blacklist = get_blacklist()
-    return exclude_hosts_from_subnets(subnets, blacklist)
-
-
-def range_to_cidrs(ip1, ip2):
-    ip1 = ipaddress.ip_address(ip1)
-    ip2 = ipaddress.ip_address(ip2)
-    ip1, ip2 = sorted([ip1, ip2])
-    return ipaddress.summarize_address_range(ip1, ip2)
+    def _set_headers(self):
+        self.send_response(200)
+        self.send_header('Content-Type', 'plain/text')
+        self.end_headers()
+        
+    # GET sends back next available port
+    def do_GET(self):
+        next_port = self.ssh.next_available_proxy_port(self.address_string())
+        self._set_headers()
+        self.wfile.write(next_port)
 
 
-def get_blacklist():
-    return get_neighbors().union(get_gateways())
+def monitor(api_key):
+    url = "https://api.tailscale.com/api/v2/tailnet/-/devices?fields=all"
+    headers = { "Authorization" : "Bearer f{api_key}" }
+    r = requests.get(url, headers=headers)
+    
+    devices = json.loads(r.text)["devices"]
 
+    # Get all IPv4 addresses in TailScale
+    hosts = []
+    for d in devices:
+        hosts.append(d.get("addresses")[0])
 
-def get_interfaces(globalonly=True):
-    interfaces = {}
-    with suppress(Exception):
-        for i in json.loads(
-            sp.run(["ip", "-j", "a"], stdout=sp.PIPE, stderr=sp.DEVNULL).stdout
-        ):
-            ifname = i.get("ifname", "")
-            if not ifname:
-                continue
-            interface = {}
-            for a in i.get("addr_info", []):
-                address = a.get("local", "")
-                netmask = a.get("prefixlen", "")
-                scope = a.get("scope", "")
-                if scope == "global" or not globalonly:
-                    interfaces[ifname] = f"{address}/{netmask}"
-    return interfaces
-
-
-def get_neighbors():
-    neighbors = set()
-    for neighbor in json.loads(
-        sp.run(["ip", "-j", "n"], stdout=sp.PIPE, stderr=sp.DEVNULL).stdout
-    ):
-        dst = neighbor.get("dst", "")
-        if dst:
-            neighbors.add(ipaddress.ip_address(dst))
-    return neighbors
-
-
-def get_gateways():
-    gateways = set()
-    for route in json.loads(
-        sp.run(["ip", "-j", "r"], stdout=sp.PIPE, stderr=sp.DEVNULL).stdout
-    ):
-        gateway = route.get("gateway", "")
-        if gateway:
-            gateways.add(ipaddress.ip_address(gateway))
-
-    return gateways
-
-
-def autodetect_interface(version=6):
-    # return the first physical interface that's enabled and has a carrier
-    for i in json.loads(
-        sp.run(["ip", "-j", "a"], stdout=sp.PIPE, stderr=sp.DEVNULL).stdout
-    ):
-        if "UP" in i["flags"] and not (
-            "LOOPBACK" in i["flags"] or "NO-CARRIER" in i["flags"]
-        ):
-            return i["ifname"]
-
-    return None
-
-
-def autodetect_address_pool(version=6):
-    blacklist = get_blacklist()
-    for ifname, ipaddr in get_interfaces().items():
-        print(f"{ifname}:{ipaddr}")
-        net = ipaddress.ip_network(ipaddr, strict=False)
-        excluded_hosts = set(blacklist)
-        blacklist.add(net.network_address)
-        blacklist.add(net.broadcast_address)
-        if net.version == version:
-            log.info(f"Detected subnet {net} on {ifname}")
-            return exclude_hosts(net, excluded_hosts)
-
-    return []
-
-
-def exclude_hosts_from_subnets(subnets, hosts):
-    new_subnets = []
-    for subnet in subnets:
-        new_subnets += exclude_hosts_from_subnet(subnet, hosts)
-
-    if not new_subnets:
-        return subnets
-
-    return new_subnets
-
-
-def exclude_hosts_from_subnet(subnet, hosts):
-    new_subnets = [subnet]
-    for host in hosts:
-        new_subnets = exclude_host_from_subnets(new_subnets, host)
-
-    return new_subnets
-
-
-def exclude_host_from_subnets(subnets, host):
-    new_subnets = []
-    for subnet in subnets:
-        new_subnets += exclude_host_from_subnet(subnet, host)
-
-    return new_subnets
-
-
-def exclude_host_from_subnet(subnet, host):
-    if host in subnet:
-        return list(subnet.address_exclude(ipaddress.ip_network(host)))
-    else:
-        return [subnet]
-
-
-def get_ssh_key_passphrase(f=None):
-    key_pass = ""
-    if ssh_key_encrypted(f):
-        while 1:
-            key_pass = getpass("SSH key password (press enter if none): ")
-            if check_ssh_key_passphrase(key_pass, f):
-                break
-            log.error(f"Incorrect SSH key passphrase")
-
-    return key_pass
-
-
-def ssh_key_encrypted(f=None):
-    if f is None:
-        f = Path.home() / ".ssh/id_rsa"
-
-    with suppress(Exception):
-        p = sp.run(
-            ["ssh-keygen", "-y", "-P", "", "-f", str(f)],
-            stdout=sp.DEVNULL,
-            stderr=sp.PIPE,
-        )
-        if not "incorrect" in p.stderr.decode():
-            return False
-
-    return True
-
-
-def check_ssh_key_passphrase(passphrase, f=None):
-    if f is None:
-        f = Path.home() / ".ssh/id_rsa"
-
-    cmd = ["ssh-keygen", "-y", "-P", str(passphrase), "-f", str(f)]
-    with suppress(Exception):
-        p = sp.run(cmd, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
-        return p.returncode == 0
-
-    return True
-
+def is_port_in_use(port: int) -> bool:
+    # https://stackoverflow.com/questions/2470971/fast-way-to-test-if-a-port-is-in-use-using-python#answers
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(('localhost', port)) == 0
 
 def sudo_run(cmd, *args, **kwargs):
     if os.geteuid() != 0:
