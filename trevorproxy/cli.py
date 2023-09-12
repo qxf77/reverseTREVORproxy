@@ -66,14 +66,19 @@ def main():
 
                 # serve forever
                 while 1:
-                    print("[INFO] Monitoring...", end="\r")
+                    time.sleep(1)
+                    print("[INFO] Monitoring.", end="\r")
+
                     # Check if new proxies have been added
                     new = load_balancer.monitor_new_proxies()
-                    time.sleep(3)
+                    time.sleep(1)
+                    print("[INFO] Monitoring..", end="\r")
 
                     # Check if all proxies are still up
                     inactive = load_balancer.health_check_connections()
-                    time.sleep(3)
+                    time.sleep(1)
+                    print("[INFO] Monitoring...", end="\r")
+
 
             finally:
                 load_balancer.stop()
