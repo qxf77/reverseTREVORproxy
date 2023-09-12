@@ -631,7 +631,8 @@ to attach them to the start of each source file to most effectively
 state the exclusion of warranty; and each file should have at least
 the "copyright" line and a pointer to where the full notice is found.
 
-    A SOCKS proxy written in Python that randomizes your source IP address. Round-robin your evil packets through SSH tunnels or give them billions of unique source addresses!
+    A SOCKS proxy written in Python that randomizes your source IP address. 
+    Round-robin your evil packets through SSH tunnels or give them billions of unique source addresses!
     Copyright (C) <year>  <name of author>
 
     This program is free software: you can redistribute it and/or modify

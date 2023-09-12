@@ -1,7 +1,6 @@
 import _thread as thread
 import logging
 from http.server import BaseHTTPRequestHandler, HTTPServer
-#import SocketServer - TODO remove if unnecessary
 
 log = logging.getLogger("trevorproxy.api")
 

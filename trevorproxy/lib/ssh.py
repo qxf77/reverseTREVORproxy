@@ -1,11 +1,7 @@
-import sh
 import logging
-from time import sleep
 import subprocess as sp
 from pathlib import Path
-
 from .util import sudo_run, is_port_in_use
-#from .errors import SSHProxyError
 
 log = logging.getLogger("trevorproxy.ssh")
 

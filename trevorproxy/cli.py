@@ -10,30 +10,22 @@ from pathlib import Path
 package_path = Path(__file__).resolve().parent
 sys.path.append(str(package_path))
 
-import lib.logger
-from lib import util
 from lib import logger
-from lib.errors import *
-
+from lib import util
+from lib.ssh import SSHLoadBalancer
 from lib.api import start_api
+from lib.errors import *
 
 log = logging.getLogger("trevorproxy.cli")
 
-
 def main():
     parser = argparse.ArgumentParser(
-        description="Round-robin requests through multiple REVERSE SSH tunnels via a single SOCKS server"
+        description="Round-robin requests through multiple reverse SSH SOCKs tunnels via a single master"
     )
-    parser.add_argument("-q", "--quiet", action="store_true", help="Be quiet")
     parser.add_argument(
-        "-v", "-d", "--verbose", "--debug", action="store_true", help="Be verbose"
+        "-v", "--verbose", action="store_true", help="Be verbose"
     )
-
-    subparsers = parser.add_subparsers(dest="proxytype", help="proxy type")
-
-    ssh = subparsers.add_parser("ssh", help="round-robin traffic through SSH hosts")
-    
-    ssh.add_argument(
+    parser.add_argument(
         "--base-port",
         default=31332,
         type=int,
@@ -46,42 +38,37 @@ def main():
         if options.verbose:
             logging.getLogger("trevorproxy").setLevel(logging.DEBUG)
 
-        if options.proxytype == "ssh":
-            from lib.ssh import SSHLoadBalancer
+        # make sure executables exist
+        for binary in SSHLoadBalancer.dependencies:
+            if not which(binary):
+                log.error(f"Please install {binary}")
+                sys.exit(1)
 
-            # make sure executables exist
-            for binary in SSHLoadBalancer.dependencies:
-                if not which(binary):
-                    log.error(f"Please install {binary}")
-                    sys.exit(1)
+        # init + add context for the API server
+        load_balancer = SSHLoadBalancer(base_port=options.base_port)
 
-            # init + add context for the API server
-            load_balancer = SSHLoadBalancer(base_port=options.base_port)
+        try:
+            # start the load balancer and a HTTP API server which serves the next available port 
+            # that can be used for a reverse SOCK connection
+            load_balancer.start()
+            start_api(port=31331, context=load_balancer)
 
-            try:
-                # start the load balancer and a HTTP API server which serves the next available port 
-                # that can be used for a reverse SOCK connection
-                load_balancer.start()
-                start_api(port=31331, context=load_balancer)
+            # serve forever
+            while 1:
+                time.sleep(1)
+                print("[INFO] Monitoring.  ", end="\r")
 
-                # serve forever
-                while 1:
-                    time.sleep(1)
-                    print("[INFO] Monitoring.  ", end="\r")
+                # Check if new proxies have been added
+                new = load_balancer.monitor_new_proxies()
+                time.sleep(1)
+                print("[INFO] Monitoring.. ", end="\r")
 
-                    # Check if new proxies have been added
-                    new = load_balancer.monitor_new_proxies()
-                    time.sleep(1)
-                    print("[INFO] Monitoring.. ", end="\r")
-
-                    # Check if all proxies are still up
-                    inactive = load_balancer.health_check_connections()
-                    time.sleep(1)
-                    print("[INFO] Monitoring...", end="\r")
-
-
-            finally:
-                load_balancer.stop()
+                # Check if all proxies are still up
+                inactive = load_balancer.health_check_connections()
+                time.sleep(1)
+                print("[INFO] Monitoring...", end="\r")
+        finally:
+            load_balancer.stop()
 
 
     except argparse.ArgumentError as e:

@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "trevorproxy"
-version = "1.0.6"
-description = "Rotate your source IP address via SSH proxies and other methods"
+version = "1.0.6.1"
+description = "Rotate your source IP address via SSH proxies"
 authors = ["qxf77", "TheTechromancer"]
 license = "GPL-3.0"
 repository = "https://github.com/qxf77/reverseTREVORproxy"
@@ -10,7 +10,6 @@ original = "https://github.com/blacklanternsecurity/TREVORproxy"
 
 [tool.poetry.dependencies]
 python = "^3.6"
-sh = "^1.14.2"
 
 [tool.poetry.scripts]
 trevorproxy = 'trevorproxy.cli:main'
