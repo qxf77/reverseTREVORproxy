@@ -17,6 +17,8 @@ from lib import util
 from lib import logger
 from lib.errors import *
 
+from .api import start_api
+
 log = logging.getLogger("trevorproxy.cli")
 
 
@@ -57,13 +59,12 @@ def main():
 
             # init + add context for the API server
             load_balancer = SSHLoadBalancer(base_port=options.base_port)
-            load_balancer.add_context(load_balancer)
 
             try:
                 # start the load balancer and a HTTP API server which serves the next available port 
                 # that can be used for a reverse SOCK connection
                 load_balancer.start()
-                load_balancer.start_api()
+                start_api(load_balancer)
 
                 # serve forever
                 while 1:

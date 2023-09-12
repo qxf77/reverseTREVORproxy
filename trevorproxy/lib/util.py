@@ -9,27 +9,7 @@ from pathlib import Path
 from getpass import getpass
 from contextlib import suppress
 
-from http.server import BaseHTTPRequestHandler, HTTPServer
-#import SocketServer - TODO remove if unnecessary
-
 log = logging.getLogger("trevorproxy.util")
-
-class BasicAPIHandler(BaseHTTPRequestHandler):
-    def __init__(self, load_balancer, *args):
-        self.context = load_balancer
-        super().__init__(self, *args)
-
-    def _set_headers(self):
-        self.send_response(200)
-        self.send_header('Content-Type', 'plain/text')
-        self.end_headers()
-        
-    # GET sends back next available port
-    def do_GET(self):
-        next_port = self.context.next_available_proxy_port(self.address_string())
-        self._set_headers()
-        self.wfile.write(next_port)
-
 
 def monitor(api_key):
     url = "https://api.tailscale.com/api/v2/tailnet/-/devices?fields=all"
