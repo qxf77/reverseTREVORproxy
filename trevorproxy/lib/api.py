@@ -12,25 +12,29 @@ class BasicAPIHandler(BaseHTTPRequestHandler):
         
     # GET sends back next available port
     def do_GET(self):
-        next_port = self.context.next_available_proxy_port(self.address_string())
+        next_port = self.server.context.next_available_proxy_port(self.address_string())
         self._set_headers()
-        self.wfile.write(next_port)
+        self.wfile.write(str(next_port).encode())
 
 class BasicAPIServer(HTTPServer):
     '''
     Custom API server with a refernce to the SSH load balancer
     # https://python-list.python.narkive.com/9Q8NM4nH/passing-context-into-basehttprequesthandler
     '''
-    def __init__(self, *args, **kw, custom_context=None):
+    def __init__(self, *args, **kw):
         super().__init__(self, *args, **kw)
-        self.context = custom_context
+        self.context = None
 
-def start_api(self, address="0.0.0.0", port=8080, context=None):
+    def add_context(self, context):
+        self.context = context
+
+def start_api(address="0.0.0.0", port=8080, context=None):
     '''
     Start a HTTP server acting as a basic API 
     '''
     server_address = (address, port)
-    httpd = BasicAPIServer(server_address, BasicAPIHandler, custom_context=context)
+    httpd = BasicAPIServer(server_address, BasicAPIHandler)
+    httpd.add_context(context)
         
     log.debug(f"[*] Starting API on {address}:{port}")
     httpd.serve_forever()

@@ -191,7 +191,7 @@ class SSHLoadBalancer:
             if not is_port_in_use(port):
                 break
 
-        new_conn_inactive(SSHProxy(remote_host, port))
+        self.new_conn_inactive(SSHProxy(remote_host, port))
         return port
 
     def new_conn_inactive(self, proxy):
