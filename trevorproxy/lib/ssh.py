@@ -149,7 +149,7 @@ class SSHLoadBalancer:
             if self.check_if_proxy_is_established(self.all_proxies[proxy]):
                 new = True
                 self.new_conn_active(self.all_proxies[proxy])
-                log.info(f"New reverse SOCKS on 127.0.0.1:{proxy.get_local_proxy_port} from {proxy.get_remote_host()}")
+                log.info(f"New reverse SOCKS on 127.0.0.1:{self.all_proxies[proxy].proxy_port} from {self.all_proxies[proxy].remote_host}")
         
         return new
     
@@ -163,7 +163,7 @@ class SSHLoadBalancer:
             if not check_if_proxy_is_established(self.active_proxies[proxy]):
                 inactive = True
                 self.remove_connection(self.active_proxies[proxy])
-                log.info(f"Removed reverse SOCKS on 127.0.0.1:{proxy.get_local_proxy_port} from {proxy.get_remote_host()}")
+                log.info(f"Removed reverse SOCKS on 127.0.0.1:{self.all_proxies[proxy].proxy_port} from {self.all_proxies[proxy].remote_host}")
         
         return inactive
 
@@ -216,7 +216,7 @@ class SSHLoadBalancer:
         '''
         Remove a single active connection, update iptables
         '''
-        cmd = ["ss", "-KHt4", "state", "established", "sport", "=", ":ssh", "and", "dst", "=", proxy.get_remote_host()]
+        cmd = ["ss", "-KHt4", "state", "established", "sport", "=", ":ssh", "and", "dst", "=", proxy.remote_host]
         sudo_run(cmd)
 
         del self.active_proxies[str(proxy)]
@@ -230,7 +230,7 @@ class SSHLoadBalancer:
         '''
         for proxy in self.active_proxies.values():
             del self.active_proxies[str(proxy)]
-            cmd = ["ss", "-KHt4", "state", "established", "sport", "=", ":ssh", "and", "dst", "=", proxy.get_remote_host()]
+            cmd = ["ss", "-KHt4", "state", "established", "sport", "=", ":ssh", "and", "dst", "=", proxy.remote_host]
             sudo_run(cmd)
 
     def start(self):
