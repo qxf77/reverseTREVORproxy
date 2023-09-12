@@ -67,15 +67,13 @@ def main():
                 # serve forever
                 while 1:
                     # Check if new proxies have been added
+                    log.info("Monitoring new proxies - waiting 3s")
                     new = load_balancer.monitor_new_proxies()
-
-                    log.info("Sleeping for 3s - 1")
                     time.sleep(3)
 
                     # Check if all proxies are still up
+                    log.info("Health checking existing proxies - waiting 3s")
                     inactive = load_balancer.health_check_connections()
-
-                    log.info("Sleeping for 3s - 2")
                     time.sleep(3)
 
             finally:
