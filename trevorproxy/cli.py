@@ -23,19 +23,19 @@ def main():
         description="Round-robin requests through multiple reverse SSH SOCKs tunnels via a single master"
     )
     parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Be verbose"
+        "-v", "--verbose", action="store_true", help="be verbose"
     )
     parser.add_argument(
         "--api",
         default=31331,
         type=int,
-        help="Port that will be used by the API server (default: 31331)",
+        help="port that will be used by the API server (default: 31331)",
     )
     parser.add_argument(
         "--base",
         default=31332,
         type=int,
-        help="Base listening port to use for SOCKS proxies (default: 31332)",
+        help="base listening port to use for SOCKS proxies (default: 31332)",
     )
 
     try:
@@ -51,7 +51,7 @@ def main():
                 sys.exit(1)
 
         # init + add context for the API server
-        load_balancer = SSHLoadBalancer(base_port=options.base_port)
+        load_balancer = SSHLoadBalancer(base_port=options.base)
 
         try:
             # start the load balancer and a HTTP API server which serves the next available port 
