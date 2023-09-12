@@ -15,15 +15,16 @@ reverseTREVORproxy listens for incoming SSH connections that start a reverse SOC
 
 ## CLI Usage
 ~~~
-$ trevorproxy --help
-usage: trevorproxy [-h] [-v] [--base-port BASE_PORT]
+$ trevorproxy -h
+usage: trevorproxy [-h] [-v] [--api API] [--base BASE]
 
 Round-robin requests through multiple reverse SSH SOCKs tunnels via a single master
 
 options:
-  -h, --help            show this help message and exit
-  -v, --verbose         Be verbose
-  --base-port BASE_PORT Base listening port to use for SOCKS proxies (default: 31332)
+  -h, --help     show this help message and exit
+  -v, --verbose  Be verbose
+  --api API      Port that will be used by the API server (default: 31331)
+  --base BASE    Base listening port to use for SOCKS proxies (default: 31332)
 ~~~
 
 ## Original by [@thetechr0mancer](https://twitter.com/thetechr0mancer)
