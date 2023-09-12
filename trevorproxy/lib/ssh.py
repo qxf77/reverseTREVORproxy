@@ -228,7 +228,7 @@ class SSHLoadBalancer:
         '''
         Remove all active connections, don't update iptables after every delete
         '''
-        for proxy in self.active_proxies.values():
+        for proxy in list(self.active_proxies):
             del self.active_proxies[str(proxy)]
             cmd = ["ss", "-KHt4", "state", "established", "sport", "=", ":ssh", "and", "dst", "=", proxy.remote_host]
             sudo_run(cmd)
