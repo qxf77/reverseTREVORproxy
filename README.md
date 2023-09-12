@@ -22,9 +22,9 @@ Round-robin requests through multiple reverse SSH SOCKs tunnels via a single mas
 
 options:
   -h, --help     show this help message and exit
-  -v, --verbose  Be verbose
-  --api API      Port that will be used by the API server (default: 31331)
-  --base BASE    Base listening port to use for SOCKS proxies (default: 31332)
+  -v, --verbose  be verbose
+  --api API      port that will be used by the API server (default: 31331)
+  --base BASE    base listening port to use for SOCKS proxies (default: 31332)
 ~~~
 
 ## Original by [@thetechr0mancer](https://twitter.com/thetechr0mancer)
