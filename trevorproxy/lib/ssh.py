@@ -5,7 +5,7 @@ import subprocess as sp
 from pathlib import Path
 
 from http.server import HTTPServer
-from .util import BasicAPI
+from .util import BasicAPIHandler
 
 from .util import sudo_run, is_port_in_use
 #from .errors import SSHProxyError
@@ -127,6 +127,7 @@ class SSHLoadBalancer:
         base_port=33482,
         current_ip=False,               # not used
         socks_server=True,
+        context=None
     ):
         self.hosts = hosts
         self.active_proxies = dict()    # all current active proxies 
@@ -139,9 +140,12 @@ class SSHLoadBalancer:
         self.proxy_round_robin = list(self.active_proxies.values())
         self.round_robin_counter = 0
 
+    def add_context(self, context):
+        self.context = context
+
     def handler(*args):
         # https://python-list.python.narkive.com/9Q8NM4nH/passing-context-into-basehttprequesthandler
-        BasicAPIHandler(self, *args)
+        BasicAPIHandler(self.context, *args)
 
     def start_api(self, address="0.0.0.0", port=8080):
         '''
@@ -149,7 +153,6 @@ class SSHLoadBalancer:
         '''
         server_address = (address, port)
         httpd = HTTPServer(server_address, handler)
-        httpd.ad
             
         log.debug(f"[*] Starting API on {address}:{port}")
         httpd.serve_forever()

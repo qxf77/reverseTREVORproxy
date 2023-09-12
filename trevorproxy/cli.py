@@ -55,8 +55,9 @@ def main():
                     log.error(f"Please install {binary}")
                     sys.exit(1)
 
-            # init 
+            # init + add context for the API server
             load_balancer = SSHLoadBalancer(base_port=options.base_port)
+            load_balancer.add_context(load_balancer)
 
             try:
                 # start the load balancer and a HTTP API server which serves the next available port 
