@@ -1,7 +1,5 @@
 # reverseTREVORproxy
 
-By [@qxf77](https://twitter.com/_qxf7)
-
 [![License](https://img.shields.io/badge/license-GPLv3-blue.svg)](https://raw.githubusercontent.com/blacklanternsecurity/nmappalyzer/master/LICENSE)
 [![Python Version](https://img.shields.io/badge/python-3.6+-blue)](https://www.python.org)
 
